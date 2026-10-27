@@ -11,7 +11,7 @@ from backend.app.schemas.payloads import (
     ClassroomUpdateSchema,
     SeatsBulkUpdateSchema,
 )
-from backend.app.ai.worker import read_single_frame, worker_instance
+from backend.app.ai.worker import worker_instance
 
 router = APIRouter(prefix="/api/classrooms", tags=["classrooms"])
 
@@ -75,6 +75,24 @@ def list_classrooms(db: Session = Depends(get_db)):
     return db.query(Classroom).order_by(Classroom.id).all()
 
 
+@router.post("", response_model=ClassroomResponseSchema)
+def create_classroom(payload: ClassroomUpdateSchema, db: Session = Depends(get_db)):
+    room = Classroom(
+        name=payload.name or "Phòng học mới",
+        camera_source=payload.camera_source or "0",
+        camera_profile=payload.camera_profile or "FRONT_VIEW",
+        grid_rows=payload.grid_rows or 2,
+        grid_cols=payload.grid_cols or 2,
+        frame_skip=payload.frame_skip or 3,
+        suspicious_hold_sec=payload.suspicious_hold_sec or 3.0,
+        phone_conf_thres=payload.phone_conf_thres or 0.55,
+    )
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    return room
+
+
 @router.put("/{classroom_id}", response_model=ClassroomResponseSchema)
 def update_classroom(
     classroom_id: int, payload: ClassroomUpdateSchema, db: Session = Depends(get_db)
@@ -120,9 +138,8 @@ def get_classroom_snapshot(classroom_id: int, db: Session = Depends(get_db)):
     room = db.query(Classroom).filter(Classroom.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    frame = read_single_frame(room.camera_source)
+    frame = worker_instance.get_snapshot_frame(classroom_id, room.camera_source)
     ok, buf = cv2.imencode(".jpg", frame)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to encode snapshot")
     return Response(content=buf.tobytes(), media_type="image/jpeg")
-

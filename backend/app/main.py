@@ -46,11 +46,10 @@ async def classroom_ws_endpoint(websocket: WebSocket, classroom_id: int):
             {
                 "event": "INITIAL_STATE",
                 "classroom_id": classroom_id,
-                "seat_states": worker_instance.get_seat_states(),
+                "seat_states": worker_instance.get_seat_states(classroom_id=classroom_id),
             }
         )
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(classroom_id, websocket)
-

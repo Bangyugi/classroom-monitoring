@@ -72,3 +72,13 @@ def test_time_window_tracker_triggers_suspicious_after_hold_seconds():
     assert st2.status == SeatStatus.SUSPICIOUS
     assert st2.suspect_seconds >= 3.0
 
+
+def test_pose_time_tracker_prunes_stale_tracks():
+    tracker = PoseTimeTracker(profile=CameraProfile.FRONT_VIEW, hold_seconds=3.0)
+    p1 = build_front_person(nose_y=235, l_wrist=(480, 380, 0.9), r_wrist=(520, 380, 0.9))
+    tracker.update_track(p1, seat_id=1, dt=0.5)
+    assert 1 in tracker.tracks
+
+    tracker.prune_absent_tracks(active_track_ids=set(), dt=35.0, max_absent_sec=30.0)
+    assert 1 not in tracker.tracks
+

@@ -16,6 +16,8 @@ from backend.app.ai.phone_detector import YoloPhoneDetector
 from backend.app.ai.overlay import render_annotated_frame
 from backend.app.api.ws import ws_manager
 
+SNAPSHOT_COOLDOWN_SEC = 10.0
+
 
 def read_single_frame(camera_source: str) -> np.ndarray:
     src = int(camera_source) if camera_source.isdigit() else camera_source
@@ -57,15 +59,28 @@ class MonitoringWorker:
         self.classroom_id: int | None = None
         self.fps: float = 0.0
         self.latest_jpeg: bytes | None = None
+        self.latest_raw_frame: np.ndarray | None = None
         self.engine: CascadeEngine | None = None
+        self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._pose_model = None
         self._phone_detector = YoloPhoneDetector(weights_path=PHONE_WEIGHTS)
+        self._last_snapshot_ts: dict[tuple[int, str], float] = {}
 
     def _ensure_pose_model(self):
         if self._pose_model is None:
             from ultralytics import YOLO
             self._pose_model = YOLO(POSE_WEIGHTS)
+
+    def get_snapshot_frame(self, classroom_id: int, camera_source: str) -> np.ndarray:
+        with self._lock:
+            if (
+                self.running
+                and self.classroom_id == classroom_id
+                and self.latest_raw_frame is not None
+            ):
+                return self.latest_raw_frame.copy()
+        return read_single_frame(camera_source)
 
     def reload_classroom_config(self, classroom_id: int):
         if self.classroom_id != classroom_id or self.engine is None:
@@ -84,30 +99,43 @@ class MonitoringWorker:
                 )
                 for s in room.seats
             ]
-            self.engine.update_config(
-                seats=seats,
-                profile=CameraProfile(room.camera_profile),
-                hold_seconds=room.suspicious_hold_sec,
-                phone_conf_thres=room.phone_conf_thres,
-            )
+            with self._lock:
+                self.engine.update_config(
+                    seats=seats,
+                    profile=CameraProfile(room.camera_profile),
+                    hold_seconds=room.suspicious_hold_sec,
+                    phone_conf_thres=room.phone_conf_thres,
+                )
 
     def start(self, classroom_id: int):
         self.stop()
-        self.classroom_id = classroom_id
-        self.running = True
+        with self._lock:
+            self.classroom_id = classroom_id
+            self.running = True
+            self.fps = 0.0
+            self.latest_jpeg = None
+            self.latest_raw_frame = None
+            self._last_snapshot_ts.clear()
         self._thread = threading.Thread(target=self._run_loop, args=(classroom_id,), daemon=True)
         self._thread.start()
 
     def stop(self):
         self.running = False
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=3.0)
         self._thread = None
+        with self._lock:
+            self.fps = 0.0
+            self.latest_jpeg = None
+            self.latest_raw_frame = None
 
-    def get_seat_states(self) -> dict[int, str]:
-        if not self.engine:
-            return {}
-        return {k: v.value for k, v in self.engine.seat_statuses.items()}
+    def get_seat_states(self, classroom_id: int | None = None) -> dict[int, str]:
+        with self._lock:
+            if not self.engine:
+                return {}
+            if classroom_id is not None and self.classroom_id != classroom_id:
+                return {}
+            return {k: v.value for k, v in self.engine.seat_statuses.items()}
 
     def _iter_frames(self, camera_source: str):
         src = int(camera_source) if camera_source.isdigit() else camera_source
@@ -172,13 +200,14 @@ class MonitoringWorker:
                 )
                 for s in room.seats
             ]
-            self.engine = CascadeEngine(
-                seats=seats,
-                profile=CameraProfile(room.camera_profile),
-                hold_seconds=room.suspicious_hold_sec,
-                phone_conf_thres=room.phone_conf_thres,
-                phone_detect_fn=self._phone_detector.detect_on_roi,
-            )
+            with self._lock:
+                self.engine = CascadeEngine(
+                    seats=seats,
+                    profile=CameraProfile(room.camera_profile),
+                    hold_seconds=room.suspicious_hold_sec,
+                    phone_conf_thres=room.phone_conf_thres,
+                    phone_detect_fn=self._phone_detector.detect_on_roi,
+                )
 
         frame_idx = 0
         last_proc_ts = time.perf_counter()
@@ -187,6 +216,8 @@ class MonitoringWorker:
         for frame in self._iter_frames(camera_source):
             if not self.running:
                 break
+            with self._lock:
+                self.latest_raw_frame = frame
             frame_idx += 1
             if frame_idx % frame_skip == 0:
                 now = time.perf_counter()
@@ -195,23 +226,25 @@ class MonitoringWorker:
                 self.fps = round(1.0 / dt, 1)
 
                 last_persons = self._extract_persons(frame)
-                events = self.engine.process_detections(frame, last_persons, dt=dt)
-                annotated = render_annotated_frame(
-                    frame,
-                    self.engine.seats,
-                    self.engine.seat_statuses,
-                    self.engine.pose_tracker.tracks,
-                    last_persons,
-                )
+                with self._lock:
+                    events = self.engine.process_detections(frame, last_persons, dt=dt)
+                    annotated = render_annotated_frame(
+                        frame,
+                        self.engine.seats,
+                        self.engine.seat_statuses,
+                        self.engine.pose_tracker.tracks,
+                        last_persons,
+                    )
                 self._handle_events(classroom_id, events, annotated)
             else:
-                annotated = render_annotated_frame(
-                    frame,
-                    self.engine.seats,
-                    self.engine.seat_statuses,
-                    self.engine.pose_tracker.tracks,
-                    last_persons,
-                )
+                with self._lock:
+                    annotated = render_annotated_frame(
+                        frame,
+                        self.engine.seats,
+                        self.engine.seat_statuses,
+                        self.engine.pose_tracker.tracks,
+                        last_persons,
+                    )
 
             ok, buf = cv2.imencode(".jpg", annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if ok:
@@ -220,26 +253,31 @@ class MonitoringWorker:
     def _handle_events(self, classroom_id: int, events, annotated_frame: np.ndarray):
         if not events:
             return
+        now_ts = time.time()
         with SessionLocal() as db:
             for ev in events:
                 snapshot_url = None
                 if ev.status in (SeatStatus.SUSPICIOUS, SeatStatus.VIOLATION):
-                    ts_int = int(time.time() * 1000)
-                    fname = f"room{classroom_id}_seat{ev.seat_id}_{ts_int}.jpg"
-                    cv2.imwrite(str(SNAPSHOTS_DIR / fname), annotated_frame)
-                    snapshot_url = f"/storage/snapshots/{fname}"
+                    key = (ev.seat_id, ev.status.value)
+                    last_ts = self._last_snapshot_ts.get(key, 0.0)
+                    if (now_ts - last_ts) >= SNAPSHOT_COOLDOWN_SEC:
+                        self._last_snapshot_ts[key] = now_ts
+                        ts_int = int(now_ts * 1000)
+                        fname = f"room{classroom_id}_seat{ev.seat_id}_{ts_int}.jpg"
+                        cv2.imwrite(str(SNAPSHOTS_DIR / fname), annotated_frame)
+                        snapshot_url = f"/storage/snapshots/{fname}"
 
-                    log_row = ViolationLog(
-                        classroom_id=classroom_id,
-                        seat_id=ev.seat_id,
-                        seat_label=ev.seat_label,
-                        track_id=ev.track_id,
-                        level=ev.status.value,
-                        confidence=ev.confidence,
-                        snapshot_url=snapshot_url,
-                    )
-                    db.add(log_row)
-                    db.commit()
+                        log_row = ViolationLog(
+                            classroom_id=classroom_id,
+                            seat_id=ev.seat_id,
+                            seat_label=ev.seat_label,
+                            track_id=ev.track_id,
+                            level=ev.status.value,
+                            confidence=ev.confidence,
+                            snapshot_url=snapshot_url,
+                        )
+                        db.add(log_row)
+                        db.commit()
 
                 ws_manager.broadcast_from_thread(
                     classroom_id,
@@ -259,4 +297,3 @@ class MonitoringWorker:
 
 
 worker_instance = MonitoringWorker()
-

@@ -104,11 +104,10 @@ export const CalibrationModal: React.FC<Props> = ({ classroom, onClose, onSaved 
                     setActiveIdx(idx);
                     setDraftPoints([]);
                   }}
-                  className={`w-full text-left px-3 py-2 rounded-lg border text-sm ${
-                    idx === activeIdx
+                  className={`w-full text-left px-3 py-2 rounded-lg border text-sm ${idx === activeIdx
                       ? "bg-blue-600/30 border-blue-400 text-white"
                       : "bg-slate-800 border-slate-700 text-slate-300"
-                  }`}
+                    }`}
                 >
                   <div className="font-semibold">{seat.label}</div>
                   <div className="text-xs text-slate-400">
@@ -132,3 +131,4 @@ export const CalibrationModal: React.FC<Props> = ({ classroom, onClose, onSaved 
     </div>
   );
 };
+

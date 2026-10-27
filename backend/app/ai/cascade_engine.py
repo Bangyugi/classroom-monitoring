@@ -35,6 +35,21 @@ class SeatStateEvent:
     phone_box: tuple[float, float, float, float] | None
 
 
+def compute_expanded_person_roi(
+    person: PersonDetection, frame_w: int, frame_h: int, scale: float = 1.3
+) -> tuple[int, int, int, int]:
+    bx1, by1, bx2, by2 = person.bbox_xyxy
+    cx = (bx1 + bx2) * 0.5
+    cy = (by1 + by2) * 0.5
+    w = max(180.0, (bx2 - bx1) * scale)
+    h = max(180.0, (by2 - by1) * scale)
+    x1 = int(max(0, cx - w * 0.5))
+    y1 = int(max(0, cy - h * 0.5))
+    x2 = int(min(frame_w, cx + w * 0.5))
+    y2 = int(min(frame_h, cy + h * 0.5))
+    return x1, y1, x2, y2
+
+
 class CascadeEngine:
     def __init__(
         self,
@@ -76,6 +91,7 @@ class CascadeEngine:
     ) -> list[SeatStateEvent]:
         h, w = frame.shape[:2]
         track_to_seat = assign_persons_to_seats(persons, self.seats, w, h)
+        active_ids = {p.track_id for p in persons}
 
         seat_best_track: dict[int, TrackRuntimeState] = {}
 
@@ -87,6 +103,11 @@ class CascadeEngine:
                 roi = compute_smart_roi_crop(person, self.profile, w, h)
                 state.last_roi_box = roi
                 phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
+                # Fallback mở rộng 1.3x bbox nếu crop quanh cổ tay chưa phát hiện được điện thoại
+                if not phone_boxes and len(self.seats) == 1:
+                    fb_roi = compute_expanded_person_roi(person, w, h, scale=1.3)
+                    if fb_roi != roi:
+                        phone_boxes = self.phone_detect_fn(frame, fb_roi, self.phone_conf_thres)
                 req_hits = 1 if len(self.seats) == 1 else 2
                 update_level2_verification(state, phone_boxes, conf_thres=self.phone_conf_thres, required_hits=req_hits)
 
@@ -94,6 +115,8 @@ class CascadeEngine:
                 prev_best = seat_best_track.get(seat_id)
                 if prev_best is None or STATUS_PRIORITY[state.status] > STATUS_PRIORITY[prev_best.status]:
                     seat_best_track[seat_id] = state
+
+        self.pose_tracker.prune_absent_tracks(active_ids, dt=dt, max_absent_sec=30.0)
 
         events: list[SeatStateEvent] = []
         seat_map = {s.seat_id: s for s in self.seats}
@@ -117,4 +140,3 @@ class CascadeEngine:
                 )
 
         return events
-

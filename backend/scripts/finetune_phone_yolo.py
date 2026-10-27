@@ -31,3 +31,4 @@ def finetune_cctv_phone_detector(epochs: int = 12, imgsz: int = 640) -> Path:
 if __name__ == "__main__":
     saved = finetune_cctv_phone_detector()
     print(f"Saved fine-tuned weights to: {saved}")
+

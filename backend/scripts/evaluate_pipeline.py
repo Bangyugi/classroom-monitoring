@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import time
 import cv2
+import numpy as np
 
 from backend.app.ai.types import CameraProfile, PersonDetection
 from backend.app.ai.pose_analyzer import evaluate_posture
@@ -53,6 +54,7 @@ def evaluate_level2_on_cctv_val(root: Path) -> dict[str, dict[str, float]]:
 
     stats = {
         "coco_full": {"tp": 0, "fp": 0, "fn": 0},
+        "coco_roi_crop": {"tp": 0, "fp": 0, "fn": 0},
         "finetuned_full": {"tp": 0, "fp": 0, "fn": 0},
         "finetuned_roi_crop": {"tp": 0, "fp": 0, "fn": 0},
     }
@@ -78,18 +80,28 @@ def evaluate_level2_on_cctv_val(root: Path) -> dict[str, dict[str, float]]:
         pred_ft = [tuple(float(v) for v in b.xyxy[0].tolist()) for b in r_ft[0].boxes] if r_ft else []
         accumulate_pr(gt_boxes, pred_ft, stats["finetuned_full"])
 
-        roi_preds: list[tuple[float, float, float, float]] = []
+        coco_roi_preds: list[tuple[float, float, float, float]] = []
+        ft_roi_preds: list[tuple[float, float, float, float]] = []
         for gx1, gy1, gx2, gy2 in gt_boxes:
             cx, cy = (gx1 + gx2) * 0.5, (gy1 + gy2) * 0.5
             rx1, ry1 = int(max(0, cx - 140)), int(max(0, cy - 140))
             rx2, ry2 = int(min(w, cx + 140)), int(min(h, cy + 140))
             crop = frame[ry1:ry2, rx1:rx2]
-            rc = ft_model.predict(crop, conf=0.35, classes=ft_classes, verbose=False)
-            if rc and len(rc[0].boxes) > 0:
-                for b in rc[0].boxes:
+
+            rc_coco = coco_model.predict(crop, conf=0.25, classes=[67], verbose=False)
+            if rc_coco and len(rc_coco[0].boxes) > 0:
+                for b in rc_coco[0].boxes:
                     bx1, by1, bx2, by2 = [float(v) for v in b.xyxy[0].tolist()]
-                    roi_preds.append((bx1 + rx1, by1 + ry1, bx2 + rx1, by2 + ry1))
-        accumulate_pr(gt_boxes, roi_preds, stats["finetuned_roi_crop"])
+                    coco_roi_preds.append((bx1 + rx1, by1 + ry1, bx2 + rx1, by2 + ry1))
+
+            rc_ft = ft_model.predict(crop, conf=0.35, classes=ft_classes, verbose=False)
+            if rc_ft and len(rc_ft[0].boxes) > 0:
+                for b in rc_ft[0].boxes:
+                    bx1, by1, bx2, by2 = [float(v) for v in b.xyxy[0].tolist()]
+                    ft_roi_preds.append((bx1 + rx1, by1 + ry1, bx2 + rx1, by2 + ry1))
+
+        accumulate_pr(gt_boxes, coco_roi_preds, stats["coco_roi_crop"])
+        accumulate_pr(gt_boxes, ft_roi_preds, stats["finetuned_roi_crop"])
 
     summary = {}
     for k, v in stats.items():
@@ -120,7 +132,10 @@ def evaluate_level1_false_positive_on_stbd(root: Path, sample_limit: int = 80) -
         kpts = res[0].keypoints.data.cpu().numpy()
         for i in range(len(boxes)):
             total_persons += 1
-            person = PersonDetection(track_id=i, bbox_xyxy=tuple(boxes[i]), keypoints_xyc=kpts[i])
+            kp = kpts[i]
+            if kp.shape[1] == 2:
+                kp = np.hstack([kp, np.ones((kp.shape[0], 1), dtype=np.float32)])
+            person = PersonDetection(track_id=i, bbox_xyxy=tuple(boxes[i]), keypoints_xyc=kp)
             is_susp, _ = evaluate_posture(person, CameraProfile.FRONT_VIEW)
             if is_susp:
                 suspect_flagged += 1
@@ -173,6 +188,7 @@ if __name__ == "__main__":
 | Cấu hình mô hình | Precision | Recall | F1-Score |
 |---|---|---|---|
 | YOLOv8n gốc (COCO `cell phone`) - Toàn ảnh | {l2['coco_full']['precision']} | {l2['coco_full']['recall']} | {l2['coco_full']['f1']} |
+| YOLOv8n gốc (COCO `cell phone`) - Smart ROI Crop | {l2['coco_roi_crop']['precision']} | {l2['coco_roi_crop']['recall']} | {l2['coco_roi_crop']['f1']} |
 | YOLOv8n Fine-tuned (Class 1–3) - Toàn ảnh | {l2['finetuned_full']['precision']} | {l2['finetuned_full']['recall']} | {l2['finetuned_full']['f1']} |
 | **YOLOv8n Fine-tuned + Smart ROI Crop (Đề xuất)** | **{l2['finetuned_roi_crop']['precision']}** | **{l2['finetuned_roi_crop']['recall']}** | **{l2['finetuned_roi_crop']['f1']}** |
 

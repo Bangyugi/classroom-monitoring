@@ -32,3 +32,4 @@ export interface ViolationLog {
   snapshot_url: string | null;
   created_at: string;
 }
+

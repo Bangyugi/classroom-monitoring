@@ -13,7 +13,7 @@ STATUS_BGR = {
 }
 
 SKELETON_EDGES = [
-    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (0, 5), (0, 6)
+    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10)
 ]
 
 
@@ -35,7 +35,6 @@ def render_annotated_frame(
         st = seat_statuses.get(seat.seat_id, SeatStatus.EMPTY)
         color = STATUS_BGR[st]
         if len(seats) == 1:
-            # Chế độ 1 vùng toàn khung hình (Webcam cá nhân): chỉ vẽ viền ngoài gọn gàng, không tô đè lên mặt
             cv2.polylines(canvas, [pts], isClosed=True, color=color, thickness=3)
             cv2.putText(
                 canvas,
@@ -78,6 +77,12 @@ def render_annotated_frame(
                 p2 = (int(kpts[j][0]), int(kpts[j][1]))
                 cv2.line(canvas, p1, p2, (255, 220, 0), 2)
 
+        # Vẽ 1 đường trục cổ duy nhất từ trung điểm hai vai lên mũi
+        if kpts[0][2] >= KP_CONF_MIN and kpts[5][2] >= KP_CONF_MIN and kpts[6][2] >= KP_CONF_MIN:
+            sh_mid = (int((kpts[5][0] + kpts[6][0]) * 0.5), int((kpts[5][1] + kpts[6][1]) * 0.5))
+            nose_pt = (int(kpts[0][0]), int(kpts[0][1]))
+            cv2.line(canvas, sh_mid, nose_pt, (0, 255, 255), 2)
+
         if st_obj:
             label = f"ID:{person.track_id} {st_obj.suspect_seconds:.1f}s"
             cv2.putText(canvas, label, (x1, max(18, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 2)
@@ -88,4 +93,3 @@ def render_annotated_frame(
                 cv2.putText(canvas, conf_txt, (px1, max(15, py1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
     return canvas
-

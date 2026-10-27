@@ -46,3 +46,20 @@ def test_update_level2_verification_requires_two_hits_for_violation():
     assert state.status == SeatStatus.VIOLATION
     assert state.last_confidence == 0.75
 
+
+def test_update_level2_verification_downgrades_violation_to_suspicious_when_phone_disappears():
+    state = TrackRuntimeState(
+        track_id=1,
+        seat_id=3,
+        suspect_seconds=4.0,
+        phone_hits=1,
+        status=SeatStatus.VIOLATION,
+        last_confidence=0.80,
+        last_phone_box=(500.0, 400.0, 530.0, 440.0),
+    )
+    # Không còn phát hiện điện thoại trong khung hình -> phone_hits giảm về 0 -> hạ về SUSPICIOUS và xóa hộp phone
+    update_level2_verification(state, [], conf_thres=0.60, required_hits=2)
+    assert state.phone_hits == 0
+    assert state.status == SeatStatus.SUSPICIOUS
+    assert state.last_phone_box is None
+

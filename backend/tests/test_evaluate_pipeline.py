@@ -9,3 +9,4 @@ def test_iou_xyxy_and_accumulate_pr():
     counter = {"tp": 0, "fp": 0, "fn": 0}
     accumulate_pr(gt, preds, counter, iou_thres=0.35)
     assert counter == {"tp": 1, "fp": 1, "fn": 0}
+

@@ -115,6 +115,7 @@ class PoseTimeTracker:
             self.tracks[person.track_id] = state
 
         state.seat_id = seat_id
+        state.absent_seconds = 0.0
         is_suspect, ratio = evaluate_posture(person, self.profile)
         state.is_posture_suspect = is_suspect
         state.head_ratio = ratio
@@ -135,3 +136,16 @@ class PoseTimeTracker:
             state.last_phone_box = None
 
         return state
+
+    def prune_absent_tracks(
+        self, active_track_ids: set[int], dt: float, max_absent_sec: float = 30.0
+    ) -> None:
+        stale_ids: list[int] = []
+        for tid, st in self.tracks.items():
+            if tid not in active_track_ids:
+                st.absent_seconds += dt
+                st.suspect_seconds = max(0.0, st.suspect_seconds - 1.5 * dt)
+                if st.absent_seconds >= max_absent_sec:
+                    stale_ids.append(tid)
+        for tid in stale_ids:
+            self.tracks.pop(tid, None)

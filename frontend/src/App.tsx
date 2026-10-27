@@ -14,7 +14,7 @@ export const App: React.FC = () => {
   const [selectedRoom, setSelectedRoom] = useState<Classroom | null>(null);
   const [running, setRunning] = useState<boolean>(false);
   const [fps, setFps] = useState<number>(0);
-  const [seatStates, setSeatStates] = useState<Record<number, SeatStatus>>({});
+  const [seatStates, setSeatStates] = useState<Record<string, SeatStatus>>({});
   const [violations, setViolations] = useState<ViolationLog[]>([]);
   const [showCalib, setShowCalib] = useState<boolean>(false);
   const [previewImg, setPreviewImg] = useState<string | null>(null);
@@ -30,6 +30,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!selectedRoom) return;
+    setSeatStates({});
     fetch(`/api/violations?classroom_id=${selectedRoom.id}`)
       .then((r) => r.json())
       .then(setViolations);
@@ -40,8 +41,8 @@ export const App: React.FC = () => {
       const msg = JSON.parse(ev.data);
       if (msg.event === "INITIAL_STATE" && msg.seat_states) {
         setSeatStates(msg.seat_states);
-      } else if (msg.event === "SEAT_STATE_CHANGED") {
-        setSeatStates((prev) => ({ ...prev, [msg.seat_id]: msg.status }));
+      } else if (msg.event === "SEAT_STATE_CHANGED" && msg.classroom_id === selectedRoom.id) {
+        setSeatStates((prev) => ({ ...prev, [String(msg.seat_id)]: msg.status }));
         if (msg.status === "SUSPICIOUS" || msg.status === "VIOLATION") {
           fetch(`/api/violations?classroom_id=${selectedRoom.id}`)
             .then((r) => r.json())
@@ -50,20 +51,24 @@ export const App: React.FC = () => {
       }
     };
     return () => ws.close();
-  }, [selectedRoom]);
+  }, [selectedRoom?.id]);
 
   useEffect(() => {
+    if (!selectedRoom) return;
     const timer = setInterval(() => {
       fetch("/api/monitoring/status")
         .then((r) => r.json())
         .then((st) => {
-          setRunning(st.running);
-          setFps(st.fps || 0);
-          if (st.seat_states) setSeatStates(st.seat_states);
+          const isCurrentRoom = Boolean(st.running && st.classroom_id === selectedRoom.id);
+          setRunning(isCurrentRoom);
+          setFps(isCurrentRoom ? st.fps || 0 : 0);
+          if (isCurrentRoom && st.seat_states) {
+            setSeatStates(st.seat_states);
+          }
         });
     }, 1500);
     return () => clearInterval(timer);
-  }, []);
+  }, [selectedRoom?.id]);
 
   const toggleMonitoring = async () => {
     if (!selectedRoom) return;
@@ -80,6 +85,20 @@ export const App: React.FC = () => {
     }
   };
 
+  const updateRoomParams = async (patch: Partial<Classroom>) => {
+    if (!selectedRoom) return;
+    const res = await fetch(`/api/classrooms/${selectedRoom.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) {
+      const updated: Classroom = await res.json();
+      setSelectedRoom(updated);
+      setClassrooms((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header className="border-b border-slate-800 bg-slate-900/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
@@ -92,12 +111,18 @@ export const App: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedRoom?.id || ""}
-            onChange={(e) => {
+            onChange={async (e) => {
               const found = classrooms.find((c) => c.id === Number(e.target.value));
-              if (found) setSelectedRoom(found);
+              if (found) {
+                if (running) {
+                  await fetch("/api/monitoring/stop", { method: "POST" });
+                  setRunning(false);
+                }
+                setSelectedRoom(found);
+              }
             }}
             className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm"
           >
@@ -107,6 +132,35 @@ export const App: React.FC = () => {
               </option>
             ))}
           </select>
+
+          {selectedRoom && (
+            <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-1.5 text-xs">
+              <label className="text-slate-400">Giữ tư thế (s):</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                max="15"
+                value={selectedRoom.suspicious_hold_sec}
+                onChange={(e) =>
+                  updateRoomParams({ suspicious_hold_sec: Number(e.target.value) })
+                }
+                className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-center text-white"
+              />
+              <label className="text-slate-400 ml-1">Ngưỡng YOLO:</label>
+              <input
+                type="number"
+                step="0.05"
+                min="0.15"
+                max="0.95"
+                value={selectedRoom.phone_conf_thres}
+                onChange={(e) =>
+                  updateRoomParams({ phone_conf_thres: Number(e.target.value) })
+                }
+                className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-center text-white"
+              />
+            </div>
+          )}
 
           <button
             onClick={() => setShowCalib(true)}
@@ -140,7 +194,7 @@ export const App: React.FC = () => {
           <div className="flex-1 bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[380px]">
             {running ? (
               <img
-                src="/api/stream"
+                src={`/api/stream?room=${selectedRoom?.id || 0}`}
                 alt="Live AI Stream"
                 className="w-full h-auto max-h-[540px] object-contain"
               />
@@ -177,7 +231,8 @@ export const App: React.FC = () => {
                 }}
               >
                 {selectedRoom.seats.map((seat) => {
-                  const st: SeatStatus = (seat.id && seatStates[seat.id]) || "EMPTY";
+                  const st: SeatStatus =
+                    (seat.id !== undefined && seatStates[String(seat.id)]) || "EMPTY";
                   return (
                     <div
                       key={seat.id || seat.label}
