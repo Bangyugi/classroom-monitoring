@@ -87,7 +87,8 @@ class CascadeEngine:
                 roi = compute_smart_roi_crop(person, self.profile, w, h)
                 state.last_roi_box = roi
                 phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
-                update_level2_verification(state, phone_boxes, conf_thres=self.phone_conf_thres, required_hits=2)
+                req_hits = 1 if len(self.seats) == 1 else 2
+                update_level2_verification(state, phone_boxes, conf_thres=self.phone_conf_thres, required_hits=req_hits)
 
             if seat_id is not None:
                 prev_best = seat_best_track.get(seat_id)

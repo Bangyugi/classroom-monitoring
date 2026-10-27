@@ -25,7 +25,12 @@ def test_cascade_only_calls_phone_detector_after_level1_triggers():
             seat_id=1,
             label="Dãy 1 - Bàn 1",
             polygon_norm=[(0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)],
-        )
+        ),
+        SeatPolygon(
+            seat_id=2,
+            label="Dãy 1 - Bàn 2",
+            polygon_norm=[(0.55, 0.1), (0.95, 0.1), (0.95, 0.5), (0.55, 0.5)],
+        ),
     ]
     phone_calls = []
 

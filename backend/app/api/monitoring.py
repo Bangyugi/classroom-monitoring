@@ -32,13 +32,13 @@ def get_monitoring_status():
 
 
 async def _mjpeg_generator():
-    while True:
+    while worker_instance.running:
         if worker_instance.latest_jpeg:
             yield (
                 b"--frame\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" + worker_instance.latest_jpeg + b"\r\n"
             )
-        await asyncio.sleep(0.08)
+        await asyncio.sleep(0.06)
 
 
 @router.get("/stream")

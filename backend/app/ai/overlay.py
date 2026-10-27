@@ -34,21 +34,35 @@ def render_annotated_frame(
         pts = np.array([[int(px * w), int(py * h)] for px, py in seat.polygon_norm], dtype=np.int32)
         st = seat_statuses.get(seat.seat_id, SeatStatus.EMPTY)
         color = STATUS_BGR[st]
-        cv2.fillPoly(overlay, [pts], color)
-        cv2.polylines(canvas, [pts], isClosed=True, color=color, thickness=2)
-        cx = int(np.mean(pts[:, 0]))
-        cy = int(np.mean(pts[:, 1]))
-        cv2.putText(
-            canvas,
-            f"{seat.label} [{st.value}]",
-            (max(5, cx - 55), cy),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.48,
-            (255, 255, 255),
-            2,
-        )
+        if len(seats) == 1:
+            # Chế độ 1 vùng toàn khung hình (Webcam cá nhân): chỉ vẽ viền ngoài gọn gàng, không tô đè lên mặt
+            cv2.polylines(canvas, [pts], isClosed=True, color=color, thickness=3)
+            cv2.putText(
+                canvas,
+                f"{seat.label}: {st.value}",
+                (20, 35),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                color,
+                2,
+            )
+        else:
+            cv2.fillPoly(overlay, [pts], color)
+            cv2.polylines(canvas, [pts], isClosed=True, color=color, thickness=2)
+            cx = int(np.mean(pts[:, 0]))
+            cy = int(np.mean(pts[:, 1]))
+            cv2.putText(
+                canvas,
+                f"{seat.label} [{st.value}]",
+                (max(5, cx - 55), cy),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.48,
+                (255, 255, 255),
+                2,
+            )
 
-    cv2.addWeighted(overlay, 0.22, canvas, 0.78, 0, canvas)
+    if len(seats) > 1:
+        cv2.addWeighted(overlay, 0.22, canvas, 0.78, 0, canvas)
 
     for person in persons:
         st_obj = tracks.get(person.track_id)

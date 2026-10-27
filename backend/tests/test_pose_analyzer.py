@@ -38,6 +38,19 @@ def test_front_view_under_desk_occluded_wrists_is_suspect():
     assert is_suspect
 
 
+def test_front_view_holding_phone_up_near_chest_or_face_is_suspect():
+    # Ngồi trước webcam, đầu thẳng (nose_y=210, vai y=350, rộng vai=160) nhưng 1 tay giơ điện thoại lên ngang ngực/vai (y=290)
+    kpts = np.zeros((17, 3), dtype=np.float32)
+    kpts[0] = (320, 210, 0.9)   # nose
+    kpts[5] = (240, 350, 0.9)   # left shoulder
+    kpts[6] = (400, 350, 0.9)   # right shoulder (sh_w = 160, mid_y = 350)
+    kpts[7] = (210, 430, 0.8)   # elbow
+    kpts[9] = (230, 290, 0.9)   # wrist raised holding phone near shoulder/face level
+    person = PersonDetection(track_id=1, bbox_xyxy=(150, 120, 480, 480), keypoints_xyc=kpts)
+    is_suspect, _ = evaluate_posture(person, CameraProfile.FRONT_VIEW)
+    assert is_suspect
+
+
 def test_rear_view_head_drop_and_arms_inward_is_suspect():
     kpts = np.zeros((17, 3), dtype=np.float32)
     kpts[5] = (450, 300, 0.9)

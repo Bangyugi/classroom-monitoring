@@ -26,17 +26,17 @@ def shoulder_metrics(person: PersonDetection) -> tuple[tuple[float, float], floa
 def compute_seat_anchor_norm(
     person: PersonDetection, frame_w: int, frame_h: int
 ) -> tuple[float, float]:
+    x1, y1, x2, y2 = person.bbox_xyxy
     (mid_x, mid_y), sh_w, has_shoulders = shoulder_metrics(person)
     if has_shoulders:
         anchor_x = mid_x
-        anchor_y = mid_y + 0.5 * sh_w
+        anchor_y = min(float(y2 - 0.05 * (y2 - y1)), mid_y + 0.5 * sh_w)
     else:
-        x1, y1, x2, y2 = person.bbox_xyxy
         anchor_x = float((x1 + x2) * 0.5)
         anchor_y = float(y1 + 0.35 * (y2 - y1))
 
-    norm_x = min(1.0, max(0.0, anchor_x / max(1, frame_w)))
-    norm_y = min(1.0, max(0.0, anchor_y / max(1, frame_h)))
+    norm_x = min(0.99, max(0.01, anchor_x / max(1, frame_w)))
+    norm_y = min(0.99, max(0.01, anchor_y / max(1, frame_h)))
     return norm_x, norm_y
 
 

@@ -24,20 +24,17 @@ def seed_default_classrooms(db: Session) -> None:
         name="Phòng Demo Webcam (FRONT_VIEW)",
         camera_source="0",
         camera_profile="FRONT_VIEW",
-        grid_rows=2,
-        grid_cols=2,
+        grid_rows=1,
+        grid_cols=1,
         frame_skip=2,
-        suspicious_hold_sec=3.0,
-        phone_conf_thres=0.55,
+        suspicious_hold_sec=2.0,
+        phone_conf_thres=0.35,
     )
     db.add(room1)
     db.flush()
 
     default_grid_r1 = [
-        ("Dãy 1 - Bàn 1", 0, 0, [[0.05, 0.15], [0.48, 0.15], [0.48, 0.85], [0.05, 0.85]]),
-        ("Dãy 1 - Bàn 2", 0, 1, [[0.52, 0.15], [0.95, 0.15], [0.95, 0.85], [0.52, 0.85]]),
-        ("Dãy 2 - Bàn 1", 1, 0, [[0.05, 0.50], [0.48, 0.50], [0.48, 0.95], [0.05, 0.95]]),
-        ("Dãy 2 - Bàn 2", 1, 1, [[0.52, 0.50], [0.95, 0.50], [0.95, 0.95], [0.52, 0.95]]),
+        ("Vị trí Webcam Cá nhân", 0, 0, [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]]),
     ]
     for label, r, c, poly in default_grid_r1:
         db.add(Seat(classroom_id=room1.id, label=label, row_idx=r, col_idx=c, polygon_norm=poly))

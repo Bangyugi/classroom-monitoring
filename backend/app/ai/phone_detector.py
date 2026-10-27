@@ -27,11 +27,13 @@ def compute_smart_roi_crop(
     if vis_wrists:
         cx = sum(float(w[0]) for w in vis_wrists) / len(vis_wrists)
         cy = sum(float(w[1]) for w in vis_wrists) / len(vis_wrists)
-        side = max(1.8 * sh_w, 180.0)
+        side = max(2.2 * sh_w, 240.0)
+        # Dịch tâm crop lên một chút vì điện thoại thường nằm phía trên cổ tay (trong lòng bàn tay)
+        cy_shifted = cy - 0.25 * sh_w
         x1 = int(max(0, cx - side * 0.5))
-        y1 = int(max(0, cy - side * 0.5))
+        y1 = int(max(0, cy_shifted - side * 0.5))
         x2 = int(min(frame_w, cx + side * 0.5))
-        y2 = int(min(frame_h, cy + side * 0.5))
+        y2 = int(min(frame_h, cy_shifted + side * 0.5))
         return x1, y1, x2, y2
 
     pad_x = 0.35 * bbox_w

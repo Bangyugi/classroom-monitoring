@@ -20,7 +20,7 @@ def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
         head_y = sum(vis_face) / len(vis_face)
 
     r_front = (sh_y - head_y) / sh_w
-    is_head_down = r_front < 0.38
+    is_head_down = r_front < 0.42
 
     l_w, r_w = kpts[9], kpts[10]
     l_el, r_el = kpts[7], kpts[8]
@@ -30,6 +30,21 @@ def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
     min_sh_x = min(float(kpts[5][0]), float(kpts[6][0]))
     max_sh_x = max(float(kpts[5][0]), float(kpts[6][0]))
 
+    # Trường hợp A: Giơ tay cầm điện thoại ngang ngực / vai / mặt (rất phổ biến trên Webcam & khi giơ máy xem)
+    hand_raised_holding = False
+    for w in (l_w, r_w):
+        if w[2] >= KP_CONF_MIN:
+            wx, wy = float(w[0]), float(w[1])
+            near_upper_body_x = (min_sh_x - 0.65 * sh_w) <= wx <= (max_sh_x + 0.65 * sh_w)
+            at_chest_or_face_y = (head_y - 0.25 * sh_w) <= wy <= (sh_y + 0.28 * sh_w)
+            if near_upper_body_x and at_chest_or_face_y:
+                hand_raised_holding = True
+                break
+
+    if hand_raised_holding:
+        return True, float(r_front)
+
+    # Trường hợp B: Cúi đầu xuống thấp + tay chụm hoặc giấu dưới bàn
     hands_suspect = False
     if l_vis and r_vis:
         low_enough = (l_w[1] > sh_y + 0.30 * sh_w) and (r_w[1] > sh_y + 0.30 * sh_w)
@@ -37,13 +52,13 @@ def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
         hands_suspect = low_enough and (wrist_dist_ratio < 0.95)
     elif l_vis or r_vis:
         w = l_w if l_vis else r_w
-        in_torso_band = (min_sh_x - 0.15 * sh_w) <= float(w[0]) <= (max_sh_x + 0.15 * sh_w)
-        hands_suspect = (float(w[1]) > sh_y + 0.30 * sh_w) and in_torso_band and (r_front < 0.30)
+        in_torso_band = (min_sh_x - 0.25 * sh_w) <= float(w[0]) <= (max_sh_x + 0.25 * sh_w)
+        hands_suspect = (float(w[1]) > sh_y + 0.25 * sh_w) and in_torso_band and (r_front < 0.36)
     else:
-        el_down = (l_el[2] >= KP_CONF_MIN and l_el[1] > sh_y + 0.20 * sh_w) or (
-            r_el[2] >= KP_CONF_MIN and r_el[1] > sh_y + 0.20 * sh_w
+        el_down = (l_el[2] >= KP_CONF_MIN and l_el[1] > sh_y + 0.15 * sh_w) or (
+            r_el[2] >= KP_CONF_MIN and r_el[1] > sh_y + 0.15 * sh_w
         )
-        hands_suspect = el_down and (r_front < 0.28)
+        hands_suspect = (el_down and (r_front < 0.34)) or (r_front < 0.26)
 
     return bool(is_head_down and hands_suspect), float(r_front)
 
@@ -120,4 +135,3 @@ class PoseTimeTracker:
             state.last_phone_box = None
 
         return state
-
