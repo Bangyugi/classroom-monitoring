@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 import threading
 import time
 import cv2
@@ -17,6 +18,15 @@ from backend.app.ai.overlay import render_annotated_frame
 from backend.app.api.ws import ws_manager
 
 SNAPSHOT_COOLDOWN_SEC = 10.0
+
+
+def _natural_frame_sort_key(path: Path) -> tuple[str, int, str]:
+    """Sắp xếp ảnh frame video theo đúng thứ tự thời gian (VD: mp4-2 trước mp4-10)."""
+    m = re.match(r"^(.*?)_mp4-(\d+)_jpg", path.name)
+    if m:
+        return (m.group(1), int(m.group(2)), path.name)
+    nums = re.findall(r"\d+", path.stem)
+    return (path.stem, int(nums[-1]) if nums else 0, path.name)
 
 
 def read_single_frame(camera_source: str) -> np.ndarray:
@@ -142,14 +152,18 @@ class MonitoringWorker:
         if isinstance(src, str) and not src.startswith("rtsp://"):
             p = Path(src) if Path(src).is_absolute() else (ROOT_DIR / src)
             if p.is_dir():
-                imgs = sorted(p.glob("*.jpg"))
+                imgs = sorted(p.glob("*.jpg"), key=_natural_frame_sort_key)
                 idx = 0
                 while self.running and imgs:
                     frame = cv2.imread(str(imgs[idx % len(imgs)]))
                     idx += 1
                     if frame is not None:
-                        yield frame
-                    time.sleep(0.12)
+                        # Lặp mỗi frame tĩnh 3 nhịp (~0.45s/ảnh gốc) vì ảnh CCTV trong dataset là các frame cắt thưa
+                        for _ in range(3):
+                            if not self.running:
+                                break
+                            yield frame
+                            time.sleep(0.15)
                 return
 
         cap = cv2.VideoCapture(src)
