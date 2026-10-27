@@ -1,0 +1,36 @@
+# Datasets & large binary files
+datasets/
+archive/
+Classroom Phone Detection.v1i.yolov8/
+Classroom-Cell-Phone-Detection.v1i.yolov8/
+*.zip
+*.tar.gz
+
+# Runtime storage & model weights
+storage/
+*.pt
+*.onnx
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+runs/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment & IDE
+.env
+.env.local
+.vscode/
+.idea/
+*.log
