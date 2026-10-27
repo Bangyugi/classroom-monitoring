@@ -74,3 +74,4 @@ def render_annotated_frame(
                 cv2.putText(canvas, conf_txt, (px1, max(15, py1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
     return canvas
+

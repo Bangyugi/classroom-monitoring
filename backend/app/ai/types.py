@@ -52,3 +52,4 @@ class TrackRuntimeState:
     last_roi_box: tuple[int, int, int, int] | None = None
     last_snapshot_ts: float = 0.0
     head_ratio: float = 0.0
+

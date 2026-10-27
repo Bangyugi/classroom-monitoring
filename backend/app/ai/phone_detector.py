@@ -107,3 +107,4 @@ class YoloPhoneDetector:
                     )
                 )
         return boxes
+

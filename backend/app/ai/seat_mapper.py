@@ -77,3 +77,4 @@ def assign_persons_to_seats(
         if best_seat_id is not None:
             mapping[person.track_id] = best_seat_id
     return mapping
+
