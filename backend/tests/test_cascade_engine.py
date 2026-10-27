@@ -55,3 +55,4 @@ def test_cascade_only_calls_phone_detector_after_level1_triggers():
     assert len(phone_calls) == 2
     assert engine.seat_statuses[1] == SeatStatus.VIOLATION
     assert any(ev.status == SeatStatus.VIOLATION and ev.seat_id == 1 for ev in events3)
+

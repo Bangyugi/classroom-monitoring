@@ -15,3 +15,4 @@ def test_filter_phone_labels_keeps_only_class_zero():
     filtered = filter_phone_labels(raw_lines)
     assert len(filtered) == 2
     assert all(line.startswith("0 ") for line in filtered)
+

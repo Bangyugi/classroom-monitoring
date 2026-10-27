@@ -39,3 +39,4 @@ def test_assign_persons_to_seats_maps_inside_polygon():
     p2 = make_dummy_person(102, (650, 200, 0.9), (750, 200, 0.9))
     mapping = assign_persons_to_seats([p1, p2], seats, 1000, 1000)
     assert mapping == {101: 10, 102: 20}
+

@@ -2764,3 +2764,4 @@ git add frontend/
 git commit -m "feat(frontend): implement React dashboard with live MJPEG stream, real-time seat grid, and polygon calibration modal"
 ```
 Expected: `npm run build` thành công không lỗi TypeScript.
+

@@ -58,3 +58,4 @@ def test_time_window_tracker_triggers_suspicious_after_hold_seconds():
     st2 = tracker.update_track(suspect_person, seat_id=5, dt=1.6)
     assert st2.status == SeatStatus.SUSPICIOUS
     assert st2.suspect_seconds >= 3.0
+

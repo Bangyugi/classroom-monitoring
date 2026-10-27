@@ -285,3 +285,4 @@ Chỉ thực thi cho những người đang ở trạng thái `SUSPICIOUS` (ho�
    - **Thí nghiệm 1 (Hiệu quả của Smart ROI Crop & Fine-tune ở Mức 2):** So sánh Recall & Precision trên tập Test `Class_4` giữa 3 cấu hình: (a) YOLOv8n gốc chạy toàn ảnh, (b) YOLOv8n gốc chạy trên ROI Crop, (c) YOLOv8n Fine-tuned chạy trên ROI Crop.
    - **Thí nghiệm 2 (Tỷ lệ Báo động giả của Mức 1 trên STBD-08):** Chạy Mức 1 trên tập `val` của `STBD-08` (các lớp `write`, `read`, `listen`) để chứng minh bộ quy tắc tư thế phân biệt được phần lớn học sinh đang ngồi học/viết bài với tư thế nghi ngờ dùng điện thoại.
    - **Thí nghiệm 3 (Hiệu năng CPU):** Đo FPS trung bình và thời gian xử lý mỗi frame (ms) trên CPU AMD Ryzen 7 8745H giữa chế độ chạy YOLO mọi frame vs. chế độ Cascade + Frame Skipping.
+

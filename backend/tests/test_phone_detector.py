@@ -45,3 +45,4 @@ def test_update_level2_verification_requires_two_hits_for_violation():
     update_level2_verification(state, det, conf_thres=0.60, required_hits=2)
     assert state.status == SeatStatus.VIOLATION
     assert state.last_confidence == 0.75
+
