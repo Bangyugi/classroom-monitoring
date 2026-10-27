@@ -74,11 +74,7 @@ def update_level2_verification(
         if state.phone_hits == 0:
             state.last_phone_box = None
             if state.status == SeatStatus.VIOLATION:
-                state.status = (
-                    SeatStatus.SUSPICIOUS
-                    if state.is_posture_suspect
-                    else SeatStatus.NORMAL
-                )
+                state.status = SeatStatus.SUSPICIOUS
     return state
 
 
