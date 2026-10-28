@@ -18,6 +18,7 @@ export const App: React.FC = () => {
   const [violations, setViolations] = useState<ViolationLog[]>([]);
   const [showCalib, setShowCalib] = useState<boolean>(false);
   const [previewImg, setPreviewImg] = useState<string | null>(null);
+  const [streamRetry, setStreamRetry] = useState<number>(0);
 
   useEffect(() => {
     fetch("/api/classrooms")
@@ -25,7 +26,8 @@ export const App: React.FC = () => {
       .then((data: Classroom[]) => {
         setClassrooms(data);
         if (data.length > 0) setSelectedRoom(data[0]);
-      });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -33,24 +35,44 @@ export const App: React.FC = () => {
     setSeatStates({});
     fetch(`/api/violations?classroom_id=${selectedRoom.id}`)
       .then((r) => r.json())
-      .then(setViolations);
+      .then(setViolations)
+      .catch(() => {});
 
-    const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/classrooms/${selectedRoom.id}`);
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.event === "INITIAL_STATE" && msg.seat_states) {
-        setSeatStates(msg.seat_states);
-      } else if (msg.event === "SEAT_STATE_CHANGED" && msg.classroom_id === selectedRoom.id) {
-        setSeatStates((prev) => ({ ...prev, [String(msg.seat_id)]: msg.status }));
-        if (msg.status === "SUSPICIOUS" || msg.status === "VIOLATION") {
-          fetch(`/api/violations?classroom_id=${selectedRoom.id}`)
-            .then((r) => r.json())
-            .then(setViolations);
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connectWs = () => {
+      if (disposed) return;
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${window.location.host}/ws/classrooms/${selectedRoom.id}`);
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.event === "INITIAL_STATE" && msg.seat_states) {
+          setSeatStates(msg.seat_states);
+        } else if (msg.event === "SEAT_STATE_CHANGED" && msg.classroom_id === selectedRoom.id) {
+          setSeatStates((prev) => ({ ...prev, [String(msg.seat_id)]: msg.status }));
+          if (msg.status === "SUSPICIOUS" || msg.status === "VIOLATION") {
+            fetch(`/api/violations?classroom_id=${selectedRoom.id}`)
+              .then((r) => r.json())
+              .then(setViolations)
+              .catch(() => {});
+          }
         }
-      }
+      };
+      ws.onclose = () => {
+        if (!disposed) {
+          reconnectTimer = setTimeout(connectWs, 1500);
+        }
+      };
     };
-    return () => ws.close();
+
+    connectWs();
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws) ws.close();
+    };
   }, [selectedRoom?.id]);
 
   useEffect(() => {
@@ -65,7 +87,8 @@ export const App: React.FC = () => {
           if (isCurrentRoom && st.seat_states) {
             setSeatStates(st.seat_states);
           }
-        });
+        })
+        .catch(() => {});
     }, 1500);
     return () => clearInterval(timer);
   }, [selectedRoom?.id]);
@@ -194,8 +217,9 @@ export const App: React.FC = () => {
           <div className="flex-1 bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[380px]">
             {running ? (
               <img
-                src={`/api/stream?room=${selectedRoom?.id || 0}`}
+                src={`/api/stream?room=${selectedRoom?.id || 0}&r=${streamRetry}`}
                 alt="Live AI Stream"
+                onError={() => setTimeout(() => setStreamRetry((n) => n + 1), 1000)}
                 className="w-full h-auto max-h-[540px] object-contain"
               />
             ) : (

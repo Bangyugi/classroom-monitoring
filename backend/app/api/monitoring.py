@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from backend.app.schemas.payloads import StartMonitoringSchema
 from backend.app.ai.worker import worker_instance
@@ -31,20 +31,25 @@ def get_monitoring_status():
     }
 
 
-async def _mjpeg_generator():
-    while worker_instance.running:
-        if worker_instance.latest_jpeg:
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" + worker_instance.latest_jpeg + b"\r\n"
-            )
-        await asyncio.sleep(0.06)
+async def _mjpeg_generator(request: Request):
+    try:
+        while worker_instance.running:
+            if await request.is_disconnected():
+                break
+            if worker_instance.latest_jpeg:
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + worker_instance.latest_jpeg + b"\r\n"
+                )
+            await asyncio.sleep(0.06)
+    except (asyncio.CancelledError, GeneratorExit):
+        pass
 
 
 @router.get("/stream")
-async def stream_video():
+async def stream_video(request: Request):
     return StreamingResponse(
-        _mjpeg_generator(),
+        _mjpeg_generator(request),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 

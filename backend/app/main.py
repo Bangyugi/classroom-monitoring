@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,6 +51,11 @@ async def classroom_ws_endpoint(websocket: WebSocket, classroom_id: int):
             }
         )
         while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    finally:
         ws_manager.disconnect(classroom_id, websocket)
