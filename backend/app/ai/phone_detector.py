@@ -69,17 +69,25 @@ def update_level2_verification(
     valid = [d for d in detections if d.confidence >= conf_thres]
     if valid:
         best = max(valid, key=lambda d: d.confidence)
-        state.phone_hits = min(required_hits + 2, state.phone_hits + 1)
+        state.phone_hits = min(required_hits + 1, state.phone_hits + 1)
         state.last_confidence = best.confidence
         state.last_phone_box = best.bbox_xyxy
         if state.phone_hits >= required_hits:
             state.status = SeatStatus.VIOLATION
     else:
-        state.phone_hits = max(0, state.phone_hits - 1)
-        if state.phone_hits == 0:
+        if not state.is_posture_suspect:
+            state.phone_hits = 0
             state.last_phone_box = None
-            if state.status == SeatStatus.VIOLATION:
-                state.status = SeatStatus.SUSPICIOUS
+            state.last_confidence = None
+            state.suspect_seconds = 0.0
+            state.status = SeatStatus.NORMAL
+        else:
+            state.phone_hits = max(0, state.phone_hits - 1)
+            if state.phone_hits == 0:
+                state.last_phone_box = None
+                state.last_confidence = None
+                if state.status == SeatStatus.VIOLATION:
+                    state.status = SeatStatus.SUSPICIOUS
     return state
 
 

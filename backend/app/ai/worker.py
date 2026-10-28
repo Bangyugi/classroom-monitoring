@@ -271,7 +271,7 @@ class MonitoringWorker:
         with SessionLocal() as db:
             for ev in events:
                 snapshot_url = None
-                if ev.status in (SeatStatus.SUSPICIOUS, SeatStatus.VIOLATION):
+                if ev.is_escalation and ev.status in (SeatStatus.SUSPICIOUS, SeatStatus.VIOLATION):
                     key = (ev.seat_id, ev.status.value)
                     last_ts = self._last_snapshot_ts.get(key, 0.0)
                     if (now_ts - last_ts) >= SNAPSHOT_COOLDOWN_SEC:

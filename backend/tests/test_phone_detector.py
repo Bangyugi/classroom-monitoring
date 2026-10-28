@@ -51,15 +51,37 @@ def test_update_level2_verification_downgrades_violation_to_suspicious_when_phon
     state = TrackRuntimeState(
         track_id=1,
         seat_id=3,
-        suspect_seconds=4.0,
+        suspect_seconds=3.2,
         phone_hits=1,
+        is_posture_suspect=True,
         status=SeatStatus.VIOLATION,
         last_confidence=0.80,
         last_phone_box=(500.0, 400.0, 530.0, 440.0),
     )
-    # Không còn phát hiện điện thoại trong khung hình -> phone_hits giảm về 0 -> hạ về SUSPICIOUS và xóa hộp phone
+    # Vẫn đang cúi đầu (is_posture_suspect=True) nhưng điện thoại khuất -> hạ về SUSPICIOUS và xóa hộp phone
     update_level2_verification(state, [], conf_thres=0.60, required_hits=2)
     assert state.phone_hits == 0
     assert state.status == SeatStatus.SUSPICIOUS
     assert state.last_phone_box is None
+    assert state.last_confidence is None
+
+
+def test_update_level2_verification_resets_violation_to_normal_when_phone_and_posture_clear():
+    state = TrackRuntimeState(
+        track_id=1,
+        seat_id=3,
+        suspect_seconds=3.2,
+        phone_hits=1,
+        is_posture_suspect=False,
+        status=SeatStatus.VIOLATION,
+        last_confidence=0.85,
+        last_phone_box=(500.0, 400.0, 530.0, 440.0),
+    )
+    # Đã cất điện thoại VÀ ngồi thẳng trở lại (is_posture_suspect=False) -> về thẳng NORMAL, không qua SUSPICIOUS
+    update_level2_verification(state, [], conf_thres=0.60, required_hits=1)
+    assert state.phone_hits == 0
+    assert state.status == SeatStatus.NORMAL
+    assert state.suspect_seconds == 0.0
+    assert state.last_phone_box is None
+    assert state.last_confidence is None
 

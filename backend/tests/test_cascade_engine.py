@@ -137,3 +137,46 @@ def test_cascade_phone_visible_low_while_looking_straight_is_not_suspect():
     assert engine.pose_tracker.tracks[1].suspect_seconds == 0.0
     assert engine.seat_statuses[1] == SeatStatus.NORMAL
 
+
+def test_cascade_recovery_from_violation_goes_directly_to_normal():
+    seats = [
+        SeatPolygon(
+            seat_id=1,
+            label="Vị trí Webcam Cá nhân",
+            polygon_norm=[(0.02, 0.02), (0.98, 0.02), (0.98, 0.98), (0.02, 0.98)],
+        )
+    ]
+    phone_visible = True
+
+    def fake_phone_detector(frame, roi_xyxy, conf_thres):
+        if phone_visible:
+            return [PhoneDetectionBox(bbox_xyxy=(280, 340, 330, 390), confidence=0.85)]
+        return []
+
+    engine = CascadeEngine(
+        seats=seats,
+        profile=CameraProfile.FRONT_VIEW,
+        hold_seconds=2.0,
+        phone_conf_thres=0.35,
+        phone_detect_fn=fake_phone_detector,
+    )
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    suspect_p = make_suspect_person(track_id=65)
+
+    engine.process_detections(frame, [suspect_p], dt=2.2)
+    assert engine.seat_statuses[1] == SeatStatus.VIOLATION
+
+    # Người dùng cất điện thoại và ngẩng đầu nhìn thẳng màn hình
+    phone_visible = False
+    kpts_normal = np.zeros((17, 3), dtype=np.float32)
+    kpts_normal[0] = (300, 220, 0.95)
+    kpts_normal[5] = (250, 300, 0.95)
+    kpts_normal[6] = (350, 300, 0.95)
+    normal_p = PersonDetection(track_id=65, bbox_xyxy=(220, 180, 380, 480), keypoints_xyc=kpts_normal)
+
+    recovery_events = engine.process_detections(frame, [normal_p], dt=0.2)
+    assert engine.seat_statuses[1] == SeatStatus.NORMAL
+    assert len(recovery_events) == 1
+    assert recovery_events[0].status == SeatStatus.NORMAL
+    assert recovery_events[0].is_escalation is False
+

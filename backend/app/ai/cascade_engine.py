@@ -33,6 +33,7 @@ class SeatStateEvent:
     suspect_seconds: float
     confidence: float | None
     phone_box: tuple[float, float, float, float] | None
+    is_escalation: bool = False
 
 
 def compute_expanded_person_roi(
@@ -168,6 +169,7 @@ class CascadeEngine:
             new_status = best_track.status if best_track is not None else SeatStatus.EMPTY
             old_status = self.seat_statuses.get(seat_id, SeatStatus.EMPTY)
             if new_status != old_status:
+                is_esc = STATUS_PRIORITY[new_status] > STATUS_PRIORITY[old_status]
                 self.seat_statuses[seat_id] = new_status
                 events.append(
                     SeatStateEvent(
@@ -178,6 +180,7 @@ class CascadeEngine:
                         suspect_seconds=round(best_track.suspect_seconds, 2) if best_track else 0.0,
                         confidence=best_track.last_confidence if best_track else None,
                         phone_box=best_track.last_phone_box if best_track else None,
+                        is_escalation=is_esc,
                     )
                 )
 

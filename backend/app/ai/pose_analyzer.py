@@ -162,11 +162,11 @@ class PoseTimeTracker:
         state.is_posture_suspect = effective_suspect
         state.head_ratio = ratio
 
-        max_score = self.hold_seconds * 2.0
+        max_score = self.hold_seconds + 0.5
         if effective_suspect:
             state.suspect_seconds = min(max_score, state.suspect_seconds + dt)
         else:
-            state.suspect_seconds = max(0.0, state.suspect_seconds - 0.8 * dt)
+            state.suspect_seconds = max(0.0, state.suspect_seconds - 1.5 * dt)
             if state.suspect_seconds < self.hold_seconds * 0.5:
                 state.phone_hits = 0
 
