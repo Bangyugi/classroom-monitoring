@@ -4,7 +4,7 @@ import math
 from backend.app.ai.types import CameraProfile, PersonDetection, SeatStatus, TrackRuntimeState
 from backend.app.ai.seat_mapper import KP_CONF_MIN, shoulder_metrics
 
-ARM_KP_CONF = 0.15
+ARM_KP_CONF = 0.22
 
 
 def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
@@ -25,7 +25,30 @@ def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
 
     r_front = (sh_y - head_y) / sh_w
     neck_tilt_x = abs(head_x - sh_x) / sh_w
-    is_head_down = (r_front < 0.48) or (r_front < 0.54 and neck_tilt_x > 0.12)
+
+    has_both_eyes = kpts[1][2] >= KP_CONF_MIN and kpts[2][2] >= KP_CONF_MIN
+    ears_y = [float(kpts[i][1]) for i in (3, 4) if kpts[i][2] >= KP_CONF_MIN]
+
+    if has_both_eyes:
+        d_l = abs(float(kpts[1][0]) - head_x)
+        d_r = abs(head_x - float(kpts[2][0]))
+        yaw_ratio = max(d_l, d_r) / max(1.0, min(d_l, d_r))
+    else:
+        yaw_ratio = 1.0
+
+    if has_both_eyes and ears_y:
+        eye_y = (float(kpts[1][1]) + float(kpts[2][1])) * 0.5
+        ear_y = sum(ears_y) / len(ears_y)
+        eye_dist = max(1.0, abs(float(kpts[1][0]) - float(kpts[2][0])))
+        nose_ear_ratio = (head_y - ear_y) / eye_dist
+        eye_ear_ratio = (eye_y - ear_y) / eye_dist
+        head_pitched_down = (nose_ear_ratio >= 0.62) or (eye_ear_ratio >= -0.01) or (r_front < 0.38)
+        head_turned = (neck_tilt_x >= 0.14 or yaw_ratio >= 1.55) and (r_front < 0.48)
+        is_head_down = head_pitched_down or head_turned
+    else:
+        is_head_down = (r_front < 0.42) or (
+            r_front < 0.48 and (neck_tilt_x >= 0.14 or yaw_ratio >= 1.55)
+        )
 
     l_w, r_w = kpts[9], kpts[10]
     l_el, r_el = kpts[7], kpts[8]
@@ -35,25 +58,24 @@ def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
     min_sh_x = min(float(kpts[5][0]), float(kpts[6][0]))
     max_sh_x = max(float(kpts[5][0]), float(kpts[6][0]))
 
-    # Trường hợp A: Giơ tay cầm điện thoại ngang mặt / vai / ngực
+    # Trường hợp A:
+    # - Giơ tay cao ngang mặt/vai (wy <= sh_y + 0.05*sh_w): nằm ngay trong tầm mắt thẳng nên không cần cúi đầu.
+    # - Giơ tay tầm ngực dưới vai (wy trong khoảng 0.05..0.55*sh_w): bắt buộc đầu/mắt phải cúi hoặc nghiêng nhìn vào (is_head_down).
     hand_raised_holding = False
-    for w, el in ((l_w, l_el), (r_w, r_el)):
+    for w in (l_w, r_w):
         if w[2] >= ARM_KP_CONF:
             wx, wy = float(w[0]), float(w[1])
             near_upper_body_x = (min_sh_x - 0.75 * sh_w) <= wx <= (max_sh_x + 0.75 * sh_w)
-            high_hold_y = (head_y - 0.30 * sh_w) <= wy <= (sh_y + 0.30 * sh_w)
-            mid_chest_hold_y = (sh_y + 0.30 * sh_w) < wy <= (sh_y + 0.55 * sh_w)
-            forearm_bent_up = el[2] >= ARM_KP_CONF and (wy <= float(el[1]) + 0.08 * sh_w)
-            if near_upper_body_x and (
-                high_hold_y or (mid_chest_hold_y and (forearm_bent_up or is_head_down or neck_tilt_x > 0.10))
-            ):
+            high_hold_y = (w[2] >= KP_CONF_MIN) and ((head_y - 0.30 * sh_w) <= wy <= (sh_y + 0.05 * sh_w))
+            mid_chest_hold_y = (sh_y + 0.05 * sh_w) < wy <= (sh_y + 0.55 * sh_w)
+            if near_upper_body_x and (high_hold_y or (mid_chest_hold_y and is_head_down)):
                 hand_raised_holding = True
                 break
 
     if hand_raised_holding:
         return True, float(r_front)
 
-    # Trường hợp B: Cúi/nghiêng đầu nhìn xuống + tay đưa vào vùng thao tác hoặc khuất dưới bàn/khung hình
+    # Trường hợp B: Đầu cúi/nghiêng nhìn xuống (is_head_down == True) + tay đưa vào vùng thao tác hoặc khuất dưới bàn
     hands_suspect = False
     if l_vis and r_vis:
         low_enough = (l_w[1] > sh_y + 0.20 * sh_w) and (r_w[1] > sh_y + 0.20 * sh_w)
@@ -70,9 +92,9 @@ def evaluate_front_view(person: PersonDetection) -> tuple[bool, float]:
         _, _, _, y2 = person.bbox_xyxy
         closeup_lower_clipped = (float(y2) - sh_y) < 0.85 * sh_w
         hands_suspect = (
-            (el_down and (r_front < 0.46))
-            or (closeup_lower_clipped and (r_front < 0.46))
-            or (r_front < 0.38)
+            (el_down and (r_front < 0.45))
+            or (closeup_lower_clipped and (r_front < 0.42))
+            or (r_front < 0.36)
         )
 
     return bool(is_head_down and hands_suspect), float(r_front)

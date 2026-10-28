@@ -79,7 +79,8 @@ def test_cascade_single_seat_webcam_visual_phone_assist():
     upright_person = PersonDetection(track_id=9, bbox_xyxy=(400, 150, 600, 480), keypoints_xyc=kpts)
 
     def fake_phone_detector(frame, roi_xyxy, conf_thres):
-        return [PhoneDetectionBox(bbox_xyxy=(420, 260, 470, 340), confidence=0.58)]
+        # Điện thoại giơ cao ngang vùng mặt/vai (cy = 270 <= sh_y = 300)
+        return [PhoneDetectionBox(bbox_xyxy=(420, 230, 470, 300), confidence=0.58)]
 
     engine = CascadeEngine(
         seats=seats,
@@ -97,4 +98,42 @@ def test_cascade_single_seat_webcam_visual_phone_assist():
     events = engine.process_detections(frame, [upright_person], dt=1.0)
     assert engine.seat_statuses[1] == SeatStatus.VIOLATION
     assert any(ev.status == SeatStatus.VIOLATION for ev in events)
+
+
+def test_cascade_phone_visible_low_while_looking_straight_is_not_suspect():
+    # Điện thoại xuất hiện ở góc thấp dưới vai (cy = 285 > sh_y = 258.8), nhưng người dùng nhìn thẳng màn hình
+    # -> Không được báo SUSPICIOUS hay VIOLATION
+    seats = [
+        SeatPolygon(
+            seat_id=1,
+            label="Vị trí Webcam Cá nhân",
+            polygon_norm=[(0.02, 0.02), (0.98, 0.02), (0.98, 0.98), (0.02, 0.98)],
+        )
+    ]
+    kpts = np.zeros((17, 3), dtype=np.float32)
+    kpts[0] = (248.9, 183.5, 0.99)
+    kpts[1] = (267.9, 163.2, 0.98)
+    kpts[2] = (231.2, 160.3, 0.99)
+    kpts[3] = (289.6, 165.8, 0.87)
+    kpts[4] = (206.0, 161.0, 0.87)
+    kpts[5] = (328.2, 263.5, 0.86)
+    kpts[6] = (169.1, 254.1, 0.97)
+    straight_person = PersonDetection(track_id=1, bbox_xyxy=(80.0, 55.0, 360.0, 328.0), keypoints_xyc=kpts)
+
+    def fake_low_phone_detector(frame, roi_xyxy, conf_thres):
+        return [PhoneDetectionBox(bbox_xyxy=(10.0, 245.0, 80.0, 325.0), confidence=0.42)]
+
+    engine = CascadeEngine(
+        seats=seats,
+        profile=CameraProfile.FRONT_VIEW,
+        hold_seconds=2.0,
+        phone_conf_thres=0.35,
+        phone_detect_fn=fake_low_phone_detector,
+    )
+    frame = np.zeros((330, 425, 3), dtype=np.uint8)
+
+    engine.process_detections(frame, [straight_person], dt=1.5)
+    engine.process_detections(frame, [straight_person], dt=1.5)
+    assert engine.pose_tracker.tracks[1].suspect_seconds == 0.0
+    assert engine.seat_statuses[1] == SeatStatus.NORMAL
 

@@ -26,8 +26,12 @@ def compute_smart_roi_crop(
 
     vis_wrists = [kpts[i] for i in (9, 10) if kpts[i][2] >= ARM_KP_CONF]
     if vis_wrists:
-        cx = sum(float(w[0]) for w in vis_wrists) / len(vis_wrists)
-        cy = sum(float(w[1]) for w in vis_wrists) / len(vis_wrists)
+        if len(vis_wrists) == 2 and abs(float(vis_wrists[0][1]) - float(vis_wrists[1][1])) > 0.35 * sh_w:
+            active_w = min(vis_wrists, key=lambda w: float(w[1]))
+            cx, cy = float(active_w[0]), float(active_w[1])
+        else:
+            cx = sum(float(w[0]) for w in vis_wrists) / len(vis_wrists)
+            cy = sum(float(w[1]) for w in vis_wrists) / len(vis_wrists)
         side = max(2.2 * sh_w, 240.0)
         # Dịch tâm crop lên một chút vì điện thoại thường nằm phía trên cổ tay (trong lòng bàn tay)
         cy_shifted = cy - 0.25 * sh_w

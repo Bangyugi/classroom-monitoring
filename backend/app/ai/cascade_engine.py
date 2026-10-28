@@ -12,8 +12,8 @@ from backend.app.ai.types import (
     SeatStatus,
     TrackRuntimeState,
 )
-from backend.app.ai.seat_mapper import assign_persons_to_seats
-from backend.app.ai.pose_analyzer import PoseTimeTracker
+from backend.app.ai.seat_mapper import assign_persons_to_seats, shoulder_metrics
+from backend.app.ai.pose_analyzer import PoseTimeTracker, evaluate_posture
 from backend.app.ai.phone_detector import compute_smart_roi_crop, update_level2_verification
 
 STATUS_PRIORITY = {
@@ -101,7 +101,12 @@ class CascadeEngine:
             pre_phone_boxes: list[PhoneDetectionBox] | None = None
             visual_phone_hit = False
 
-            # Trong chế độ 1x1 Webcam, cho phép quét điện thoại sớm trên ROI để hỗ trợ khi tay bị điện thoại che khuất
+            is_posture_suspect, _ = evaluate_posture(person, self.profile)
+
+            # Trong chế độ 1x1 Webcam, chỉ kích hoạt hỗ trợ thị giác trực tiếp nếu:
+            # (1) Tư thế đầu/mắt đang hướng về điện thoại (is_posture_suspect == True), HOẶC
+            # (2) Điện thoại được giơ cao ngang tầm mặt/vai (phone_cy <= sh_y + 0.05 * sh_w) ngay trước mắt.
+            # Nhờ vậy nếu điện thoại để ở góc dưới mà người dùng nhìn thẳng màn hình thì sẽ KHÔNG báo sai.
             if len(self.seats) == 1 and self.phone_detect_fn is not None:
                 pre_phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
                 if not pre_phone_boxes:
@@ -110,7 +115,15 @@ class CascadeEngine:
                         pre_phone_boxes = self.phone_detect_fn(frame, fb_roi, self.phone_conf_thres)
                 valid_pre = [d for d in (pre_phone_boxes or []) if d.confidence >= self.phone_conf_thres]
                 if valid_pre:
-                    visual_phone_hit = True
+                    (_, sh_y), sh_w, has_sh = shoulder_metrics(person)
+                    best_pre = max(valid_pre, key=lambda d: d.confidence)
+                    phone_cy = (best_pre.bbox_xyxy[1] + best_pre.bbox_xyxy[3]) * 0.5
+                    phone_at_face_level = has_sh and (phone_cy <= sh_y + 0.05 * sh_w)
+                    if is_posture_suspect or phone_at_face_level:
+                        visual_phone_hit = True
+                        pre_phone_boxes = valid_pre
+                    else:
+                        pre_phone_boxes = []
 
             state = self.pose_tracker.update_track(
                 person, seat_id=seat_id, dt=dt, visual_phone_detected=visual_phone_hit

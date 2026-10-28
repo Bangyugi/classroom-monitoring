@@ -70,15 +70,33 @@ def test_front_view_chest_level_phone_with_tilted_head_and_low_conf_wrist():
 
 
 def test_front_view_closeup_webcam_bowed_head_hands_out_of_frame():
-    # Thực tế từ webcam: ngồi gần màn hình, cúi đầu nhìn điện thoại dưới mặt bàn (r_front = 0.43),
+    # Thực tế từ webcam: ngồi gần màn hình, cúi đầu nhìn điện thoại dưới mặt bàn (r_front = 0.35),
     # cả khuỷu tay và cổ tay đều nằm khuất dưới cạnh dưới khung hình webcam
     kpts = np.zeros((17, 3), dtype=np.float32)
-    kpts[0] = (320.0, 172.0, 0.95)   # nose
+    kpts[0] = (320.0, 188.0, 0.95)   # nose
     kpts[5] = (410.0, 250.0, 0.90)   # l_sh
-    kpts[6] = (230.0, 250.0, 0.90)   # r_sh (sh_w = 180, sh_y = 250, r_front = 78/180 = 0.433)
+    kpts[6] = (230.0, 250.0, 0.90)   # r_sh (sh_w = 180, sh_y = 250, r_front = 62/180 = 0.344)
     person = PersonDetection(track_id=12, bbox_xyxy=(160.0, 80.0, 480.0, 350.0), keypoints_xyc=kpts)
     is_suspect, _ = evaluate_posture(person, CameraProfile.FRONT_VIEW)
     assert is_suspect
+
+
+def test_front_view_closeup_looking_straight_at_screen_is_not_suspect():
+    # Thực tế từ webcam (FALSE_1 & FALSE_2): ngồi gần màn hình, mắt nhìn thẳng vào màn hình máy tính,
+    # hai mắt cao hơn hai tai (eye_y < ear_y), mặt cân đối (neck_tilt nhỏ, yaw nhỏ) -> KHÔNG PHẢI nghi ngờ
+    kpts = np.zeros((17, 3), dtype=np.float32)
+    kpts[0] = (248.9, 183.5, 0.99)   # nose
+    kpts[1] = (267.9, 163.2, 0.98)   # l_eye
+    kpts[2] = (231.2, 160.3, 0.99)   # r_eye
+    kpts[3] = (289.6, 165.8, 0.87)   # l_ear
+    kpts[4] = (206.0, 161.0, 0.87)   # r_ear
+    kpts[5] = (328.2, 263.5, 0.86)   # l_sh
+    kpts[6] = (169.1, 254.1, 0.97)   # r_sh (sh_y = 258.8, sh_w = 159.4, r_front = 0.473)
+    kpts[8] = (131.6, 323.4, 0.29)   # r_el
+    kpts[10] = (113.0, 312.0, 0.21)  # r_wr low conf
+    person = PersonDetection(track_id=1, bbox_xyxy=(80.0, 55.0, 360.0, 328.0), keypoints_xyc=kpts)
+    is_suspect, _ = evaluate_posture(person, CameraProfile.FRONT_VIEW)
+    assert not is_suspect
 
 
 def test_rear_view_head_drop_and_arms_inward_is_suspect():
