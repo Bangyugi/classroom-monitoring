@@ -1,12 +1,32 @@
 from __future__ import annotations
 
 import asyncio
+import cv2
+import numpy as np
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from backend.app.schemas.payloads import StartMonitoringSchema
 from backend.app.ai.worker import worker_instance
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
+
+
+def _build_warmup_jpeg() -> bytes:
+    canvas = np.full((480, 640, 3), 20, dtype=np.uint8)
+    cv2.putText(
+        canvas,
+        "Dang khoi dong Camera AI...",
+        (140, 240),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (160, 220, 160),
+        2,
+    )
+    ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+    return buf.tobytes() if ok else b""
+
+
+_WARMUP_JPEG = _build_warmup_jpeg()
 
 
 @router.post("/monitoring/start")
@@ -36,10 +56,11 @@ async def _mjpeg_generator(request: Request):
         while worker_instance.running:
             if await request.is_disconnected():
                 break
-            if worker_instance.latest_jpeg:
+            jpg = worker_instance.latest_jpeg or _WARMUP_JPEG
+            if jpg:
                 yield (
                     b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + worker_instance.latest_jpeg + b"\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
                 )
             await asyncio.sleep(0.06)
     except (asyncio.CancelledError, GeneratorExit):

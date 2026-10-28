@@ -43,3 +43,54 @@ def test_websocket_initial_state():
             assert msg["event"] == "INITIAL_STATE"
             assert msg["classroom_id"] == room_id
 
+
+def test_delete_single_and_all_violations():
+    from backend.app.core.config import SNAPSHOTS_DIR
+    from backend.app.core.database import SessionLocal
+    from backend.app.models.entities import ViolationLog
+
+    snap1 = SNAPSHOTS_DIR / "test_snap_1.jpg"
+    snap2 = SNAPSHOTS_DIR / "test_snap_2.jpg"
+    snap1.write_bytes(b"fake_jpg_1")
+    snap2.write_bytes(b"fake_jpg_2")
+
+    with SessionLocal() as db:
+        v1 = ViolationLog(
+            classroom_id=1,
+            seat_id=1,
+            seat_label="Vị trí Webcam Cá nhân",
+            track_id=1,
+            level="SUSPICIOUS",
+            confidence=0.65,
+            snapshot_url="/storage/snapshots/test_snap_1.jpg",
+        )
+        v2 = ViolationLog(
+            classroom_id=1,
+            seat_id=1,
+            seat_label="Vị trí Webcam Cá nhân",
+            track_id=1,
+            level="VIOLATION",
+            confidence=0.88,
+            snapshot_url="/storage/snapshots/test_snap_2.jpg",
+        )
+        db.add_all([v1, v2])
+        db.commit()
+        v1_id, v2_id = v1.id, v2.id
+
+    with TestClient(app) as client:
+        # Xoá 1 bản ghi
+        del_one = client.delete(f"/api/violations/{v1_id}")
+        assert del_one.status_code == 200
+        assert not snap1.exists()
+
+        remaining = client.get("/api/violations?classroom_id=1").json()
+        assert any(r["id"] == v2_id for r in remaining)
+        assert not any(r["id"] == v1_id for r in remaining)
+
+        # Xoá toàn bộ của phòng 1
+        del_all = client.delete("/api/violations?classroom_id=1")
+        assert del_all.status_code == 200
+        assert del_all.json()["deleted"] >= 1
+        assert not snap2.exists()
+        assert client.get("/api/violations?classroom_id=1").json() == []
+

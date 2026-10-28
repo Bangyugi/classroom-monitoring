@@ -104,7 +104,29 @@ export const App: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ classroom_id: selectedRoom.id }),
       });
+      setStreamRetry((n) => n + 1);
       setRunning(true);
+    }
+  };
+
+  const deleteViolation = async (v: ViolationLog) => {
+    const res = await fetch(`/api/violations/${v.id}`, { method: "DELETE" });
+    if (res.ok) {
+      setViolations((prev) => prev.filter((item) => item.id !== v.id));
+      if (v.snapshot_url && previewImg === v.snapshot_url) {
+        setPreviewImg(null);
+      }
+    }
+  };
+
+  const clearAllViolations = async () => {
+    if (!selectedRoom || violations.length === 0) return;
+    const res = await fetch(`/api/violations?classroom_id=${selectedRoom.id}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      setViolations([]);
+      setPreviewImg(null);
     }
   };
 
@@ -272,7 +294,17 @@ export const App: React.FC = () => {
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-1 flex flex-col">
-            <h2 className="font-semibold text-sm mb-3">Nhật ký Cảnh báo & Ảnh Bằng chứng</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-sm">Nhật ký Cảnh báo & Ảnh Bằng chứng</h2>
+              {violations.length > 0 && (
+                <button
+                  onClick={clearAllViolations}
+                  className="px-2.5 py-1 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-700/70 text-xs font-medium transition-colors"
+                >
+                  Xoá tất cả ({violations.length})
+                </button>
+              )}
+            </div>
             <div className="space-y-2.5 overflow-y-auto max-h-72 pr-1">
               {violations.length === 0 ? (
                 <div className="text-xs text-slate-500 py-8 text-center">
@@ -300,14 +332,23 @@ export const App: React.FC = () => {
                         {v.confidence ? ` • Độ tin cậy: ${(v.confidence * 100).toFixed(0)}%` : ""}
                       </div>
                     </div>
-                    {v.snapshot_url && (
+                    <div className="flex items-center gap-1.5">
+                      {v.snapshot_url && (
+                        <button
+                          onClick={() => setPreviewImg(v.snapshot_url)}
+                          className="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200"
+                        >
+                          Xem ảnh
+                        </button>
+                      )}
                       <button
-                        onClick={() => setPreviewImg(v.snapshot_url)}
-                        className="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200"
+                        onClick={() => deleteViolation(v)}
+                        title="Xoá cảnh báo và ảnh này"
+                        className="px-2 py-1 rounded bg-rose-950/70 hover:bg-rose-800/80 text-rose-300 border border-rose-800/60"
                       >
-                        Xem ảnh
+                        Xoá
                       </button>
-                    )}
+                    </div>
                   </div>
                 ))
               )}
