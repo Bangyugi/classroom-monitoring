@@ -9,6 +9,7 @@ from backend.app.ai.types import (
     TrackRuntimeState,
 )
 from backend.app.ai.seat_mapper import KP_CONF_MIN, shoulder_metrics
+from backend.app.ai.pose_analyzer import ARM_KP_CONF
 
 
 def compute_smart_roi_crop(
@@ -23,7 +24,7 @@ def compute_smart_roi_crop(
     bbox_h = max(1.0, float(by2 - by1))
     kpts = person.keypoints_xyc
 
-    vis_wrists = [kpts[i] for i in (9, 10) if kpts[i][2] >= KP_CONF_MIN]
+    vis_wrists = [kpts[i] for i in (9, 10) if kpts[i][2] >= ARM_KP_CONF]
     if vis_wrists:
         cx = sum(float(w[0]) for w in vis_wrists) / len(vis_wrists)
         cy = sum(float(w[1]) for w in vis_wrists) / len(vis_wrists)

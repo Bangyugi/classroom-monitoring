@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from backend.app.ai.types import PersonDetection, SeatPolygon, SeatStatus, TrackRuntimeState
 from backend.app.ai.seat_mapper import KP_CONF_MIN
+from backend.app.ai.pose_analyzer import ARM_KP_CONF
 
 STATUS_BGR = {
     SeatStatus.EMPTY: (160, 160, 160),
@@ -72,7 +73,8 @@ def render_annotated_frame(
 
         kpts = person.keypoints_xyc
         for i, j in SKELETON_EDGES:
-            if kpts[i][2] >= KP_CONF_MIN and kpts[j][2] >= KP_CONF_MIN:
+            min_c = KP_CONF_MIN if (i in (5, 6) and j in (5, 6)) else ARM_KP_CONF
+            if kpts[i][2] >= min_c and kpts[j][2] >= min_c:
                 p1 = (int(kpts[i][0]), int(kpts[i][1]))
                 p2 = (int(kpts[j][0]), int(kpts[j][1]))
                 cv2.line(canvas, p1, p2, (255, 220, 0), 2)

@@ -51,6 +51,36 @@ def test_front_view_holding_phone_up_near_chest_or_face_is_suspect():
     assert is_suspect
 
 
+def test_front_view_chest_level_phone_with_tilted_head_and_low_conf_wrist():
+    # Thực tế từ webcam: người dùng cầm điện thoại ngang ngực phải (y=252.4, sh_y=192.6 -> +0.33*sh_w),
+    # đầu hơi cúi & nghiêng nhìn sang điện thoại (r_front=0.438), cổ tay bị điện thoại che một phần (conf=0.22)
+    kpts = np.zeros((17, 3), dtype=np.float32)
+    kpts[0] = (305.6, 113.4, 0.99)   # nose
+    kpts[1] = (330.0, 87.1, 0.99)    # l_eye
+    kpts[2] = (292.6, 88.1, 0.98)    # r_eye
+    kpts[5] = (429.4, 195.1, 0.74)   # l_sh
+    kpts[6] = (248.4, 190.1, 0.95)   # r_sh (sh_w = 181.0, sh_y = 192.6)
+    kpts[7] = (453.1, 279.0, 0.04)   # l_el
+    kpts[8] = (194.9, 259.6, 0.31)   # r_el
+    kpts[9] = (413.8, 253.5, 0.11)   # l_wr
+    kpts[10] = (167.2, 252.4, 0.22)  # r_wr (partially occluded by phone)
+    person = PersonDetection(track_id=11, bbox_xyxy=(150.0, 40.0, 470.0, 280.0), keypoints_xyc=kpts)
+    is_suspect, _ = evaluate_posture(person, CameraProfile.FRONT_VIEW)
+    assert is_suspect
+
+
+def test_front_view_closeup_webcam_bowed_head_hands_out_of_frame():
+    # Thực tế từ webcam: ngồi gần màn hình, cúi đầu nhìn điện thoại dưới mặt bàn (r_front = 0.43),
+    # cả khuỷu tay và cổ tay đều nằm khuất dưới cạnh dưới khung hình webcam
+    kpts = np.zeros((17, 3), dtype=np.float32)
+    kpts[0] = (320.0, 172.0, 0.95)   # nose
+    kpts[5] = (410.0, 250.0, 0.90)   # l_sh
+    kpts[6] = (230.0, 250.0, 0.90)   # r_sh (sh_w = 180, sh_y = 250, r_front = 78/180 = 0.433)
+    person = PersonDetection(track_id=12, bbox_xyxy=(160.0, 80.0, 480.0, 350.0), keypoints_xyc=kpts)
+    is_suspect, _ = evaluate_posture(person, CameraProfile.FRONT_VIEW)
+    assert is_suspect
+
+
 def test_rear_view_head_drop_and_arms_inward_is_suspect():
     kpts = np.zeros((17, 3), dtype=np.float32)
     kpts[5] = (450, 300, 0.9)

@@ -97,23 +97,52 @@ class CascadeEngine:
 
         for person in persons:
             seat_id = track_to_seat.get(person.track_id)
-            state = self.pose_tracker.update_track(person, seat_id=seat_id, dt=dt)
+            roi = compute_smart_roi_crop(person, self.profile, w, h)
+            pre_phone_boxes: list[PhoneDetectionBox] | None = None
+            visual_phone_hit = False
 
-            if state.status in (SeatStatus.SUSPICIOUS, SeatStatus.VIOLATION) and self.phone_detect_fn is not None:
-                roi = compute_smart_roi_crop(person, self.profile, w, h)
-                state.last_roi_box = roi
-                phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
-                # Fallback mở rộng 1.3x bbox nếu crop quanh cổ tay chưa phát hiện được điện thoại
-                if not phone_boxes and len(self.seats) == 1:
+            # Trong chế độ 1x1 Webcam, cho phép quét điện thoại sớm trên ROI để hỗ trợ khi tay bị điện thoại che khuất
+            if len(self.seats) == 1 and self.phone_detect_fn is not None:
+                pre_phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
+                if not pre_phone_boxes:
                     fb_roi = compute_expanded_person_roi(person, w, h, scale=1.3)
                     if fb_roi != roi:
-                        phone_boxes = self.phone_detect_fn(frame, fb_roi, self.phone_conf_thres)
+                        pre_phone_boxes = self.phone_detect_fn(frame, fb_roi, self.phone_conf_thres)
+                valid_pre = [d for d in (pre_phone_boxes or []) if d.confidence >= self.phone_conf_thres]
+                if valid_pre:
+                    visual_phone_hit = True
+
+            state = self.pose_tracker.update_track(
+                person, seat_id=seat_id, dt=dt, visual_phone_detected=visual_phone_hit
+            )
+            state.last_roi_box = roi
+
+            if visual_phone_hit and pre_phone_boxes:
+                best_pre = max(pre_phone_boxes, key=lambda d: d.confidence)
+                state.last_confidence = best_pre.confidence
+                state.last_phone_box = best_pre.bbox_xyxy
+
+            if state.status in (SeatStatus.SUSPICIOUS, SeatStatus.VIOLATION) and self.phone_detect_fn is not None:
+                if pre_phone_boxes is not None:
+                    phone_boxes = pre_phone_boxes
+                else:
+                    phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
+                    if not phone_boxes:
+                        fb_roi = compute_expanded_person_roi(person, w, h, scale=1.3)
+                        if fb_roi != roi:
+                            phone_boxes = self.phone_detect_fn(frame, fb_roi, self.phone_conf_thres)
                 req_hits = 1 if len(self.seats) == 1 else 2
                 update_level2_verification(state, phone_boxes, conf_thres=self.phone_conf_thres, required_hits=req_hits)
 
             if seat_id is not None:
                 prev_best = seat_best_track.get(seat_id)
-                if prev_best is None or STATUS_PRIORITY[state.status] > STATUS_PRIORITY[prev_best.status]:
+                if prev_best is None or (
+                    STATUS_PRIORITY[state.status],
+                    state.suspect_seconds,
+                ) > (
+                    STATUS_PRIORITY[prev_best.status],
+                    prev_best.suspect_seconds,
+                ):
                     seat_best_track[seat_id] = state
 
         self.pose_tracker.prune_absent_tracks(active_ids, dt=dt, max_absent_sec=30.0)
