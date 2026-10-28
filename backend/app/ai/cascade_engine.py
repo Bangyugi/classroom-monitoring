@@ -96,6 +96,13 @@ class CascadeEngine:
 
         seat_best_track: dict[int, TrackRuntimeState] = {}
 
+        primary_track_id: int | None = None
+        if len(self.seats) == 1 and persons:
+            primary_track_id = max(
+                persons,
+                key=lambda p: (p.bbox_xyxy[2] - p.bbox_xyxy[0]) * (p.bbox_xyxy[3] - p.bbox_xyxy[1]),
+            ).track_id
+
         for person in persons:
             seat_id = track_to_seat.get(person.track_id)
             roi = compute_smart_roi_crop(person, self.profile, w, h)
@@ -103,17 +110,18 @@ class CascadeEngine:
             visual_phone_hit = False
 
             is_posture_suspect, _ = evaluate_posture(person, self.profile)
+            kpts = person.keypoints_xyc
+            both_wrists_occluded = (kpts[9][2] < 0.22) and (kpts[10][2] < 0.22)
 
-            # Trong chế độ 1x1 Webcam, chỉ kích hoạt hỗ trợ thị giác trực tiếp nếu:
-            # (1) Tư thế đầu/mắt đang hướng về điện thoại (is_posture_suspect == True), HOẶC
-            # (2) Điện thoại được giơ cao ngang tầm mặt/vai (phone_cy <= sh_y + 0.05 * sh_w) ngay trước mắt.
-            # Nhờ vậy nếu điện thoại để ở góc dưới mà người dùng nhìn thẳng màn hình thì sẽ KHÔNG báo sai.
-            if len(self.seats) == 1 and self.phone_detect_fn is not None:
+            # Trong chế độ 1x1 Webcam, chỉ quét sớm trên người chính diện duy nhất khi:
+            # - Tư thế đã nghi ngờ (is_posture_suspect), HOẶC cả 2 cổ tay đều khuất (có thể do điện thoại giơ ngang mặt che tay)
+            if (
+                len(self.seats) == 1
+                and person.track_id == primary_track_id
+                and self.phone_detect_fn is not None
+                and (is_posture_suspect or both_wrists_occluded)
+            ):
                 pre_phone_boxes = self.phone_detect_fn(frame, roi, self.phone_conf_thres)
-                if not pre_phone_boxes:
-                    fb_roi = compute_expanded_person_roi(person, w, h, scale=1.3)
-                    if fb_roi != roi:
-                        pre_phone_boxes = self.phone_detect_fn(frame, fb_roi, self.phone_conf_thres)
                 valid_pre = [d for d in (pre_phone_boxes or []) if d.confidence >= self.phone_conf_thres]
                 if valid_pre:
                     (_, sh_y), sh_w, has_sh = shoulder_metrics(person)

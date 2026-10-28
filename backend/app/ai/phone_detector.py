@@ -113,7 +113,7 @@ class YoloPhoneDetector:
         crop = frame[y1:y2, x1:x2]
         nc = len(self._model.names)
         target_classes = [0] if nc == 1 else [67]
-        results = self._model.predict(crop, conf=conf_thres, classes=target_classes, verbose=False)
+        results = self._model.predict(crop, conf=conf_thres, classes=target_classes, imgsz=480, verbose=False)
         boxes: list[PhoneDetectionBox] = []
         if results and len(results[0].boxes) > 0:
             for b in results[0].boxes:

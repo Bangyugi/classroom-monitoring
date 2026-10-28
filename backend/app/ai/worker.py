@@ -225,11 +225,18 @@ class MonitoringWorker:
 
         frame_idx = 0
         last_proc_ts = time.perf_counter()
+        last_frame_ts = time.perf_counter()
         last_persons: list[PersonDetection] = []
 
         for frame in self._iter_frames(camera_source):
             if not self.running:
                 break
+            now_frame = time.perf_counter()
+            frame_dt = max(0.005, now_frame - last_frame_ts)
+            last_frame_ts = now_frame
+            inst_fps = 1.0 / frame_dt
+            self.fps = round(inst_fps if self.fps == 0.0 else (0.8 * self.fps + 0.2 * inst_fps), 1)
+
             with self._lock:
                 self.latest_raw_frame = frame
             frame_idx += 1
@@ -237,7 +244,6 @@ class MonitoringWorker:
                 now = time.perf_counter()
                 dt = min(1.0, max(0.05, now - last_proc_ts))
                 last_proc_ts = now
-                self.fps = round(1.0 / dt, 1)
 
                 last_persons = self._extract_persons(frame)
                 with self._lock:
